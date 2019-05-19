@@ -18,6 +18,7 @@
         this.reloadItems = reloadItems;
 
         var liveUpdatesEnabled = false, prevAudioUrl = '', locale = null, eventSource = null;
+        var autoRefreshEnabled = false, refresher = null;
 
         ////////////////
 
@@ -36,6 +37,21 @@
                     $rootScope.reconnecting = false;
                     $rootScope.items = data.data;
                     if (!liveUpdatesEnabled) registerEventSource();
+                    if (!autoRefreshEnabled) {
+                        autoRefreshEnabled = true;
+                        console.log("Setting up 2 minute reconnect watch-dog.");
+                        
+                        refresher = $interval(function () {
+                            console.log("Renewing SSE connection...");
+                            if(eventSource != null) {
+                                eventSource.close();
+                                console.log("Closing old stream");
+                                eventSource = null;
+                            }
+                            liveUpdatesEnabled = false;
+                            $timeout(loadItems, 100);
+                        }, 120000); //re-establish connection to SSE API every two minutes
+                    }
                 } else {
                     console.warn("Items not found? Retrying in 5 seconds");
                     $rootScope.reconnecting = true;
@@ -160,10 +176,10 @@
         
         function registerEventSource() {
             if (typeof(EventSource) !== "undefined") {
-                var source = new EventSource('/rest/events');
+                eventSource = new EventSource('/rest/events');
                 liveUpdatesEnabled = true;
 
-                source.onmessage = function (event) {
+                eventSource.onmessage = function (event) {
                     try {
                         var evtdata = JSON.parse(event.data);
                         var topicparts = evtdata.topic.split('/');
@@ -262,7 +278,7 @@
                         console.warn('SSE event issue: ' + e.message);
                     }
                 }
-                source.onerror = function (event) {
+                eventSource.onerror = function (event) {
                     console.error('SSE error, closing EventSource');
                     liveUpdatesEnabled = false;
                     this.close();
@@ -430,3 +446,4 @@
         }
     }
 })();
+
