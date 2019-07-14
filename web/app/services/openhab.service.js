@@ -30,7 +30,7 @@
         }
 
         function loadItems() {
-            $http.get('/rest/items')
+            $http.get('/rest/items-filtered')
             .then(function (data) {
                 if (angular.isArray(data.data)) {
                     console.log("Loaded " + data.data.length + " openHAB items");
@@ -50,7 +50,7 @@
                             }
                             liveUpdatesEnabled = false;
                             $timeout(loadItems, 100);
-                        }, 120000); //re-establish connection to SSE API every two minutes
+                        }, 300000); //re-establish connection to SSE API every two minutes
                     }
                 } else {
                     console.warn("Items not found? Retrying in 5 seconds");
@@ -176,7 +176,7 @@
         
         function registerEventSource() {
             if (typeof(EventSource) !== "undefined") {
-                eventSource = new EventSource('/rest/events');
+                eventSource = new EventSource('/rest/events-filtered');
                 liveUpdatesEnabled = true;
 
                 eventSource.onmessage = function (event) {
@@ -186,12 +186,11 @@
 
                         if (evtdata.type === 'ItemStateEvent' || evtdata.type === 'ItemStateChangedEvent' || evtdata.type === 'GroupItemStateChangedEvent') {
                             var payload = JSON.parse(evtdata.payload);
-                            var newstate = payload.value;
                             var item = $filter('filter')($rootScope.items, {name: topicparts[2]}, true)[0];
-                            if (item && item.state !== payload.value) {
+                            if (item && item.state !== payload.state) {
                                 $rootScope.$apply(function () {
-                                    console.log("Updating " + item.name + " state from " + item.state + " to " + payload.value);
-                                    item.state = payload.value;
+                                    console.log("Updating " + item.name + " state from " + item.state + " to " + payload.state);
+                                    item.state = payload.state;
 
                                     if (!item.transformedState) {
                                         // no transformation on state
@@ -206,17 +205,14 @@
                                             $location.url('/view/' + item.state);
                                         }
                                     } else {
-                                        // fetch the new transformed state
-                                        $http.get('/rest/items/' + item.name).then(function (response) {
-                                            if (response.data && response.data.transformedState) {
-                                                item.transformedState = response.data.transformedState;
-                                                $rootScope.$emit('openhab-update', item);
-                                            } else {
-                                                console.error("Failed to retrieve the new transformedState of item: " + item.name);
-                                                item.transformedState = null;
-                                                $rootScope.$emit('openhab-update', item);
-                                            }
-                                        });
+                                        if (payload.transformedState) {
+                                            item.transformedState = payload.transformedState;
+                                            $rootScope.$emit('openhab-update', item);
+                                        } else {
+                                            console.error("Failed to retrieve the new transformedState of item: " + item.name);
+                                            item.transformedState = null;
+                                            $rootScope.$emit('openhab-update', item);
+                                        }
                                     }
 
 
@@ -446,4 +442,3 @@
         }
     }
 })();
-
